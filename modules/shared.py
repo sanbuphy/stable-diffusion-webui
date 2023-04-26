@@ -4,7 +4,7 @@ import json
 import os
 import sys
 import time
-
+from loguru import logger
 from PIL import Image
 import gradio as gr
 import tqdm
@@ -574,9 +574,12 @@ class Options:
         return value
 
 
-
+logger.info("开始构建options")
 opts = Options()
+logger.info("options构建结束")
+
 if os.path.exists(config_filename):
+    logger.info("开始加载sd config配置")
     opts.load(config_filename)
 
 settings_components = None

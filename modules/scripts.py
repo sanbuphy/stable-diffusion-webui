@@ -246,8 +246,22 @@ def load_scripts():
             if basedir.startswith(key):
                 return priority[key]
         return 9999
-
-    # 在这里反复加载各种插件组件
+    
+    """
+    这段代码主要做了以下工作:
+    1. 从scripts_list中获取脚本文件(scriptfile),并按basedir排序
+    2. 记录加载的脚本所在目录scriptfile.basedir
+    3. 如果脚本不在默认路径paths.script_path中,则将其目录添加到sys.path,以便导入
+    4. 尝试导入该脚本模块,通过script_loading.load_module(scriptfile.path)
+    5. 从该模块中注册脚本,通过register_scripts_from_module(script_module)
+    6. 如果导入失败,则打印错误信息并traceback
+    7. 最后还原sys.path,以恢复默认导入路径
+    这个过程主要是为了加载Web UI所需的各个脚本模块,并从中注册脚本。由于脚本可能位于不同目录,\
+        所以在导入前需要将其目录添加到sys.path,否则无法导入。并在导入失败或结束后还原sys.path,避免影响其他导入。
+    """
+    import pprint
+    logger.info("开始导入模块")
+    pprint.pprint(scripts_list)
     for scriptfile in sorted(scripts_list, key=lambda x: [orderby(x.basedir), x]):
         try:
             if scriptfile.basedir != paths.script_path:
@@ -264,6 +278,7 @@ def load_scripts():
         finally:
             sys.path = syspath
             current_basedir = paths.script_path
+    logger.info("模块加载完成")
 
 
 def wrap_call(func, filename, funcname, *args, default=None, **kwargs):

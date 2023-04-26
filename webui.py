@@ -58,7 +58,7 @@ import modules.ui
 from modules import modelloader
 from modules.shared import cmd_opts
 import modules.hypernetworks.hypernetwork
-
+logger.debug("wbui import 模块完毕")
 startup_timer.record("other imports")
 
 
@@ -140,7 +140,7 @@ def initialize():
         modules.sd_models.load_model()
     except Exception as e:
         errors.display(e, "loading stable diffusion model")
-        print("", file=sys.stderr)
+        print("", file=sys.stderr)  
         print("Stable diffusion model failed to load, exiting", file=sys.stderr)
         exit(1)
     startup_timer.record("load SD checkpoint")
@@ -231,7 +231,11 @@ def api_only():
 
 
 def webui():
-    logger.info("开始程序")
+    """
+Web UI的启动和初始化过程,包含了gradio服务的启动,脚本和模型的重新加载,、
+以及各种额外网络和组件的初始化工作。
+    """
+    logger.debug("开始webui主程序")
     launch_api = cmd_opts.api
     initialize()
     

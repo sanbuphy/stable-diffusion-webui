@@ -8,6 +8,8 @@ import safetensors.torch
 from omegaconf import OmegaConf
 from os import mkdir
 from urllib import request
+from loguru import logger
+import pickle
 import ldm.modules.midas as midas
 
 from ldm.util import instantiate_from_config
@@ -153,14 +155,18 @@ def model_hash(filename):
     except FileNotFoundError:
         return 'NOFILE'
 
-
-def select_checkpoint():
+import pprint
+def select_checkpoint(debug=False,model=None):
+    logger.info("开始模型选择")
+    pprint.pprint(f"检测到有以下模型：{list(checkpoints_list.keys())}")
     model_checkpoint = shared.opts.sd_model_checkpoint
+    if debug and model:
+        return checkpoints_list[list(checkpoints_list.keys())[-1]]
         
     checkpoint_info = checkpoint_alisases.get(model_checkpoint, None)
     if checkpoint_info is not None:
         return checkpoint_info
-
+    
     if len(checkpoints_list) == 0:
         print("No checkpoints found. When searching for checkpoints, looked at:", file=sys.stderr)
         if shared.cmd_opts.ckpt is not None:
@@ -174,6 +180,7 @@ def select_checkpoint():
     checkpoint_info = next(iter(checkpoints_list.values()))
     if model_checkpoint is not None:
         print(f"Checkpoint {model_checkpoint} not found; loading fallback {checkpoint_info.title}", file=sys.stderr)
+
 
     return checkpoint_info
 
@@ -250,18 +257,19 @@ def read_state_dict(checkpoint_file, print_global_state=False, map_location=None
 
 
 def get_checkpoint_state_dict(checkpoint_info: CheckpointInfo, timer):
+    logger.info(f"开始获取 {checkpoint_info.title} 模型的state_dict")
     sd_model_hash = checkpoint_info.calculate_shorthash()
     timer.record("calculate hash")
 
     if checkpoint_info in checkpoints_loaded:
         # use checkpoint cache
-        print(f"Loading weights [{sd_model_hash}] from cache")
-        return checkpoints_loaded[checkpoint_info]
+        logger.info(f"Loading weights [{sd_model_hash}] from cache")
+        return checkpoints_loaded[checkpoints_loaded]
 
-    print(f"Loading weights [{sd_model_hash}] from {checkpoint_info.filename}")
+    logger.info(f"Loading weights [{sd_model_hash}] from {checkpoint_info.filename}")
     res = read_state_dict(checkpoint_info.filename)
     timer.record("load weights from disk")
-
+    logger.info(f"结束获取 {checkpoint_info.title} 模型的state_dict")
     return res
 
 
@@ -396,9 +404,11 @@ sd1_clip_weight = 'cond_stage_model.transformer.text_model.embeddings.token_embe
 sd2_clip_weight = 'cond_stage_model.model.transformer.resblocks.0.attn.in_proj_weight'
 
 def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_to_load_state_dict=None):
+    logger.info("开始加载模型")
     from modules import lowvram, sd_hijack
     checkpoint_info = checkpoint_info or select_checkpoint()
-
+    checkpoint_info_new = select_checkpoint(debug=True,model=True)
+    logger.info(f"加载模型为{checkpoint_info.title}")
     if shared.sd_model:
         sd_hijack.model_hijack.undo_hijack(shared.sd_model)
         shared.sd_model = None
@@ -414,18 +424,24 @@ def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_
     else:
         state_dict = get_checkpoint_state_dict(checkpoint_info, timer)
 
+    #此处选择替换 checkpoint_info_new  可以决定是否启动sd 15模型，具体源码修改可进一步查看。
+    state_dict_new = get_checkpoint_state_dict(checkpoint_info_new, timer)
+    checkpoint_config_new = sd_models_config.find_checkpoint_config(state_dict_new, checkpoint_info_new)
+    
     checkpoint_config = sd_models_config.find_checkpoint_config(state_dict, checkpoint_info)
     clip_is_included_into_sd = sd1_clip_weight in state_dict or sd2_clip_weight in state_dict
 
     timer.record("find config")
 
     sd_config = OmegaConf.load(checkpoint_config)
+    sd_config_new = OmegaConf.load(checkpoint_config_new)
     repair_config(sd_config)
+    repair_config(sd_config_new)
 
     timer.record("load config")
 
     print(f"Creating model from config: {checkpoint_config}")
-
+    print(f"Creating model from config: {checkpoint_config_new}")
     sd_model = None
     try:
         with sd_disable_initialization.DisableInitialization(disable_clip=clip_is_included_into_sd):
@@ -433,20 +449,34 @@ def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_
     except Exception as e:
         pass
 
+    try:
+        with sd_disable_initialization.DisableInitialization(disable_clip=clip_is_included_into_sd):
+            sd_model_new = instantiate_from_config(sd_config_new.model)
+    except Exception as e:
+        pass
+
     if sd_model is None:
         print('Failed to create model quickly; will retry using slow method.', file=sys.stderr)
         sd_model = instantiate_from_config(sd_config.model)
+    
+   
 
     sd_model.used_config = checkpoint_config
+    sd_model_new.used_config = checkpoint_config_new
 
     timer.record("create model")
 
+    logger.info("开始加载权重")
     load_model_weights(sd_model, checkpoint_info, state_dict, timer)
+    # load_model_weights(sd_model_new, checkpoint_info_new, state_dict, timer)
 
     if shared.cmd_opts.lowvram or shared.cmd_opts.medvram:
+        logger.info("低显存占用模式")
         lowvram.setup_for_low_vram(sd_model, shared.cmd_opts.medvram)
     else:
+        # 这里把sd_model转移到了GPU
         sd_model.to(shared.device)
+        # sd_model_new.to(shared.device)
 
     timer.record("move model to device")
 
@@ -466,7 +496,7 @@ def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_
     timer.record("scripts callbacks")
 
     print(f"Model loaded in {timer.summary()}.")
-
+    logger.debug("加载模型结束")
     return sd_model
 
 
