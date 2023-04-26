@@ -9,7 +9,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from packaging import version
-
+from loguru import logger
+import inspect
 import logging
 logging.getLogger("xformers").addFilter(lambda record: 'A matching Triton is not available' not in record.getMessage())
 
@@ -216,6 +217,7 @@ def wait_on_server(demo=None):
 
 
 def api_only():
+    logger.info("api_only",inspect.currentframe().f_code.co_name)
     initialize()
 
     app = FastAPI()
@@ -229,9 +231,10 @@ def api_only():
 
 
 def webui():
+    logger.info("开始程序")
     launch_api = cmd_opts.api
     initialize()
-
+    
     while 1:
         if shared.opts.clean_temp_dir_at_start:
             ui_tempdir.cleanup_tmpdr()
@@ -290,6 +293,8 @@ def webui():
 
         print(f"Startup time: {startup_timer.summary()}.")
 
+
+        #此处开始等待命令   
         wait_on_server(shared.demo)
         print('Restarting UI...')
 
@@ -338,3 +343,5 @@ if __name__ == "__main__":
         api_only()
     else:
         webui()
+
+    

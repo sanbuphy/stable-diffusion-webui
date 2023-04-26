@@ -3,7 +3,7 @@ import re
 import sys
 import traceback
 from collections import namedtuple
-
+from loguru import logger
 import gradio as gr
 
 from modules import shared, paths, script_callbacks, extensions, script_loading, scripts_postprocessing
@@ -247,6 +247,7 @@ def load_scripts():
                 return priority[key]
         return 9999
 
+    # 在这里反复加载各种插件组件
     for scriptfile in sorted(scripts_list, key=lambda x: [orderby(x.basedir), x]):
         try:
             if scriptfile.basedir != paths.script_path:
