@@ -469,7 +469,7 @@ def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_
     logger.info("开始加载权重")
     load_model_weights(sd_model, checkpoint_info, state_dict, timer)
     # load_model_weights(sd_model_new, checkpoint_info_new, state_dict, timer)
-
+    
     if shared.cmd_opts.lowvram or shared.cmd_opts.medvram:
         logger.info("低显存占用模式")
         lowvram.setup_for_low_vram(sd_model, shared.cmd_opts.medvram)
